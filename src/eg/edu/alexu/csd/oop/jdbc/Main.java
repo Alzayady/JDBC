@@ -4,6 +4,7 @@ import java.io.File;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Properties;
 
 public class Main {
@@ -13,5 +14,9 @@ public class Main {
         File dbDir = new File("C:\\Users\\Zahran\\Desktop\\dbms\\DataBasesDirectory\\TestDB");
         info.put("path", dbDir.getAbsoluteFile());
         Connection connection = driver.connect("jdbc:xmldb://localhost", info);
+        Statement statement = connection.createStatement();
+        statement.execute("create database C:\\Users\\Zahran\\Desktop\\dbms\\DataBasesDirectory\\ahmed");
+        statement.execute("CREATE TABLE table_name3(column_name1 varchar, column_name2 int, column_name3 varchar)");
+        statement.close();
     }
 }
