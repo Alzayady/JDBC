@@ -1,15 +1,128 @@
 package eg.edu.alexu.csd.oop.jdbc;
 
+import eg.edu.alexu.csd.oop.db.DB;
+
 import java.sql.*;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.Executor;
+import java.util.concurrent.locks.ReentrantLock;
+
 
 public class myConnection implements Connection {
+    public static final myConnection controls =new myConnection();
+    private static Stack<ref> availableConnection =new Stack<>();
+    private LinkedList<myStatement> statements =new LinkedList<>();
+    private ReentrantLock lock = new ReentrantLock();
+    private ref r;
+
+    public DB getDataBase() {
+        return r.getDataBase();
+    }
+
+    private myConnection ( ref r ){
+        this.r=r;
+    }
+    private myConnection(){}
+
+    public  Connection getConnection(String path) {
+        if(availableConnection.empty()){
+            return new myConnection( new ref( makeDB(path)) );
+        }
+        ref r =availableConnection.pop();
+        DB db =setDb(path,r.getDataBase());
+        r.setDataBase(db);
+        return new myConnection( r);
+    }
+
+
+
+    private static DB makeDB(String path){
+        DB Db=new DB();
+        try {
+            Db.executeStructureQuery("create database " + path);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Db;
+    }
+
+    private static DB setDb(String path , DB db){
+        try {
+            db.executeStructureQuery("create database " + path);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return db;
+    }
+    public void removeStatement(myStatement statement){
+        statements.remove(statement);
+    }
+
+
+
     @Override
     public Statement createStatement() throws SQLException {
-        return null;
+        if(this.isClosed())throw new SQLException("this connection is already  closed ");
+        myStatement statement=new myStatement(this);
+        statements.add(statement);
+        return statement;
     }
+
+    @Override
+    public void close() throws SQLException {
+        if(this.isClosed())throw new SQLException("this connection is already  closed ");
+        for(myStatement s :statements){
+            s.close();
+        }
+        availableConnection.push(r);
+        lock.lock();
+
+    }
+
+
+    @Override
+    public boolean isClosed() throws SQLException {
+        return lock.isLocked();
+    }
+
+
+    private  class ref{
+        public DB getDataBase() {
+            return DataBase;
+        }
+
+        public void setDataBase(DB dataBase) {
+            DataBase = dataBase;
+        }
+
+        private DB DataBase;
+        ref(DB Database){
+            this.DataBase=Database;
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @Override
     public PreparedStatement prepareStatement(String sql) throws SQLException {
@@ -46,15 +159,7 @@ public class myConnection implements Connection {
         throw new java.lang.UnsupportedOperationException();
     }
 
-    @Override
-    public void close() throws SQLException {
 
-    }
-
-    @Override
-    public boolean isClosed() throws SQLException {
-        throw new java.lang.UnsupportedOperationException();
-    }
 
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
@@ -275,4 +380,9 @@ public class myConnection implements Connection {
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
         throw new java.lang.UnsupportedOperationException();
     }
+
+
+
+
 }
+

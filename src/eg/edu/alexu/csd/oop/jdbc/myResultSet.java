@@ -6,17 +6,88 @@ import java.math.BigDecimal;
 import java.net.URL;
 import java.sql.*;
 import java.util.Calendar;
+import java.util.LinkedList;
 import java.util.Map;
 
 public class myResultSet implements ResultSet {
+    private LinkedList<Object[]> selectedTable;
+    private String tableName;
+    private String[] selectedColumns;
+    private Class[] selectedTypes;
+    private Object[] currentRow;
+    private boolean beforeFirst;
+    private boolean afterLast;
+    private Statement statement;
+    private boolean closed;
+    private int cursor;
+
+    public myResultSet(Statement statement, Object[][] selectedTable, String[] selectedColumns, Class[] selectedTypes, String tableName) throws SQLException {
+        this(statement,selectedTable,selectedColumns,selectedTypes);
+        this.tableName = tableName;
+    }
+
+    // use this constructor when initializing from statement
+    public myResultSet(Statement statement, Object[][] selectedTable, String[] selectedColumns, Class[] selectedTypes) throws SQLException {
+        this(selectedTable,selectedColumns,selectedTypes);
+        this.statement = statement;
+    }
+
+    public myResultSet(Object[][] selectedTable, String[] selectedColumns, Class[] selectedTypes) throws SQLException {
+        // popularize the selectedTable
+        this.selectedTable = new LinkedList<>();
+        for (int i = 0; i < selectedTable.length; i++) {
+            Object[] tempRow = new Object[selectedTable[i].length];
+            for (int j = 0; j < selectedTable[i].length; j++) {
+                tempRow[j] = selectedTable[i][j];
+            }
+            this.selectedTable.add(tempRow);
+        }
+        this.selectedColumns = selectedColumns;
+        this.selectedTypes = selectedTypes;
+        this.beforeFirst = true;
+        this.afterLast = false;
+        this.cursor = -1;
+        this.closed = false;
+    }
+
+    public String getTableName() {
+        return this.tableName;
+    }
+
     @Override
     public boolean next() throws SQLException {
+        if (isClosed()){
+            throw new SQLException("already Closed");
+        }
+        if (!this.afterLast && this.beforeFirst) { // go to first one in the table
+            if (this.selectedTable.isEmpty()) { // if table is empty, then it is after last
+                afterLast();
+                return false;
+            } else { // if table isn't empty, then it currents row is the first one in table
+                first();
+                return true;
+            }
+        } else if (this.afterLast && !this.beforeFirst) { // go to beyond the after last, not happeneing
+            return false;
+        } else if (!this.afterLast) { // go to somewhere in the meddle
+            if (isLast()) { // last in the table
+                afterLast();
+                return false;
+            } else { // get the next row, if not empty
+                this.cursor = this.selectedTable.indexOf(currentRow) + 1;
+                this.currentRow = this.selectedTable.get(this.cursor);
+                return true;
+            }
+        }
         return false;
     }
 
     @Override
     public void close() throws SQLException {
-
+        if (this.isClosed()){
+            throw new SQLException("already closed");
+        }
+        this.closed = true;
     }
 
     @Override
@@ -27,7 +98,17 @@ public class myResultSet implements ResultSet {
 
     @Override
     public String getString(int columnIndex) throws SQLException {
-        return null;
+        if (currentRow != null) {
+            if ((columnIndex >= 1) && (columnIndex <= this.currentRow.length)) { // safe region
+                if (selectedTypes[columnIndex - 1] == String.class) { // still in safe region as, this method returns only the String
+                    if (currentRow[columnIndex - 1] == null) { // if the value of some cell is null (sql) then the return value is 0
+                        return null;
+                    }
+                    return (String) currentRow[columnIndex - 1];
+                }
+            }
+        }
+        throw new SQLException("index " + columnIndex + " is not valid");
     }
 
     @Override
@@ -45,40 +126,21 @@ public class myResultSet implements ResultSet {
         throw new java.lang.UnsupportedOperationException();
     }
 
+    // they are dealing with indexes from 1 to up, not from 0
     @Override
     public int getInt(int columnIndex) throws SQLException {
-        return 0;
+        if (currentRow != null) {
+            if ((columnIndex >= 1) && (columnIndex <= this.currentRow.length)) { // safe region
+                if (selectedTypes[columnIndex - 1] == Integer.class) { // still in safe region as, this method returns only the integer
+                    if (currentRow[columnIndex - 1] == null) { // if the value of some cell is null (sql) then the return value is 0
+                        return 0;
+                    }
+                    return (Integer) currentRow[columnIndex - 1];
+                }
+            }
+        }
+        throw new SQLException("index " + columnIndex + " is not valid");
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     @Override
     public long getLong(int columnIndex) throws SQLException {
@@ -137,7 +199,12 @@ public class myResultSet implements ResultSet {
 
     @Override
     public String getString(String columnLabel) throws SQLException {
-        return null;
+        for (int i = 0; i < this.selectedColumns.length; i++) {
+            if (this.selectedColumns[i].equals(columnLabel)) {
+                return this.getString(i + 1);
+            }
+        }
+        throw new SQLException("column: " + columnLabel + " not found");
     }
 
     @Override
@@ -157,7 +224,12 @@ public class myResultSet implements ResultSet {
 
     @Override
     public int getInt(String columnLabel) throws SQLException {
-        return 0;
+        for (int i = 0; i < this.selectedColumns.length; i++) {
+            if (this.selectedColumns[i].equals(columnLabel)) {
+                return this.getInt(i + 1);
+            }
+        }
+        throw new SQLException("column: " + columnLabel + " not found");
     }
 
     @Override
@@ -233,12 +305,21 @@ public class myResultSet implements ResultSet {
 
     @Override
     public ResultSetMetaData getMetaData() throws SQLException {
-        return null;
+        return new myResultSetMetaData(this.selectedColumns, this.selectedTypes, this.tableName);
     }
 
     @Override
     public Object getObject(int columnIndex) throws SQLException {
-        throw new java.lang.UnsupportedOperationException();
+        if (currentRow != null) {
+            if ((columnIndex >= 1) && (columnIndex <= this.currentRow.length)) { // safe region
+                if (currentRow[columnIndex - 1] == null) { // if the value of some cell is null (sql) then the return value is 0
+                    return null;
+                }
+                return currentRow[columnIndex - 1];
+            }
+        }
+        throw new SQLException("index " + columnIndex + " is not valid");
+//        throw new java.lang.UnsupportedOperationException();
     }
 
     @Override
@@ -246,9 +327,15 @@ public class myResultSet implements ResultSet {
         throw new java.lang.UnsupportedOperationException();
     }
 
+    // returns the index of the column labeled by columnLabel
     @Override
     public int findColumn(String columnLabel) throws SQLException {
-        return 0;
+        for (int i = 0; i < this.selectedColumns.length; i++) {
+            if (selectedColumns[i].equals(columnLabel)) {
+                return i + 1; // found it
+            }
+        }
+        throw new SQLException("no column found matches: " + columnLabel);
     }
 
     @Override
@@ -273,42 +360,88 @@ public class myResultSet implements ResultSet {
 
     @Override
     public boolean isBeforeFirst() throws SQLException {
-        return false;
+        if (isClosed()){
+            throw new SQLException("already closed");
+        }
+        return this.beforeFirst && !this.afterLast;
     }
 
     @Override
     public boolean isAfterLast() throws SQLException {
-        return false;
+        if (isClosed()){
+            throw new SQLException("already closed");
+        }
+        return this.afterLast && !this.beforeFirst;
     }
 
     @Override
     public boolean isFirst() throws SQLException {
-        return false;
+        if (isClosed()){
+            throw new SQLException("already Closed");
+        }
+        return this.cursor == 0;
     }
 
     @Override
     public boolean isLast() throws SQLException {
-        return false;
+        if (isClosed()){
+            throw new SQLException("already Closed");
+        }
+        return this.cursor == this.selectedTable.size() - 1;
     }
 
     @Override
     public void beforeFirst() throws SQLException {
-
+        if (isClosed()){
+            throw new SQLException("already Closed");
+        }
+        this.afterLast = false;
+        this.beforeFirst = true;
+        this.currentRow = null;
+        this.cursor = -1;
     }
 
     @Override
     public void afterLast() throws SQLException {
-
+        if (isClosed()){
+            throw new SQLException("already Closed");
+        }
+        this.afterLast = true;
+        this.beforeFirst = false;
+        this.currentRow = null;
+        this.cursor = -1;
     }
 
+    // move the courser to the first row in the data
     @Override
     public boolean first() throws SQLException {
-        return false;
+        if (this.isClosed()){
+            throw new SQLException("already closed");
+        }
+        if (this.selectedTable.isEmpty()){
+            return false;
+        }
+        // we can do it
+        this.beforeFirst = false;
+        this.afterLast = false;
+        this.currentRow = this.selectedTable.getFirst();
+        this.cursor = 0;
+        return true;
     }
 
     @Override
     public boolean last() throws SQLException {
-        return false;
+        if (this.isClosed()){
+            throw new SQLException("already closed");
+        }
+        if (this.selectedTable.isEmpty()){
+            return false;
+        }
+        this.cursor = this.selectedTable.size() - 1;
+        this.currentRow = this.selectedTable.getLast();
+        this.beforeFirst = false;
+        this.afterLast = false;
+        return true;
     }
 
     @Override
@@ -318,16 +451,66 @@ public class myResultSet implements ResultSet {
 
     @Override
     public boolean absolute(int row) throws SQLException {
+        if (isClosed()){
+            throw new SQLException("already closed");
+        }
+        if (row == 0){ // before first
+            this.beforeFirst();
+            return false;
+        } else if (row == this.selectedTable.size() + 1){ // after last
+            this.afterLast();
+            return false;
+        }else if (row == 1){ // first
+            this.first();
+            return true;
+        } else if (row == -1){ // last
+            this.last();
+            return true;
+        } else if (row > 1 && row <= this.selectedTable.size()) { // from the second to the last
+            this.cursor = row - 1;
+            this.currentRow = this.selectedTable.get(this.cursor);
+            return true;
+        } else if (row < 0 && (row * -1) <= this.selectedTable.size()){ // negative come from the back, and not exceeding the size
+            this.cursor = row + this.selectedTable.size(); // -1 + size() = size() - 1 : last, size() - size() = 0: first
+            if (this.cursor == 0){
+                this.first();
+            }
+            this.currentRow = this.selectedTable.get(this.cursor); // j + size() : j(th) one from the back as j is (-ve)
+            return true;
+        }
         return false;
     }
 
     @Override
     public boolean relative(int rows) throws SQLException {
-                throw new java.lang.UnsupportedOperationException();
+        throw new java.lang.UnsupportedOperationException();
     }
 
     @Override
     public boolean previous() throws SQLException {
+        if (isClosed()){
+            throw new SQLException("already Closed");
+        }
+        if (this.beforeFirst && !this.afterLast){ // before first position
+            return false;  // can't go back one more step
+        } else if (!this.beforeFirst && this.afterLast){ // at after last, no more progress, just go back.
+            if (this.selectedTable.isEmpty()){ // go to before first
+                beforeFirst();
+                return false;
+            } else { // go to the meddle
+                last();
+                return true;
+            }
+        } else if (!this.beforeFirst){ // in the meddle
+            if (isFirst()){ // go to before first
+                beforeFirst();
+                return false;
+            } else {
+                this.cursor = this.selectedTable.indexOf(currentRow) - 1;
+                this.currentRow = this.selectedTable.get(this.cursor);
+                return true;
+            }
+        }
         return false;
     }
 
@@ -363,17 +546,17 @@ public class myResultSet implements ResultSet {
 
     @Override
     public boolean rowUpdated() throws SQLException {
-                throw new java.lang.UnsupportedOperationException();
+        throw new java.lang.UnsupportedOperationException();
     }
 
     @Override
     public boolean rowInserted() throws SQLException {
-                throw new java.lang.UnsupportedOperationException();
+        throw new java.lang.UnsupportedOperationException();
     }
 
     @Override
     public boolean rowDeleted() throws SQLException {
-                throw new java.lang.UnsupportedOperationException();
+        throw new java.lang.UnsupportedOperationException();
     }
 
     @Override
@@ -603,7 +786,10 @@ public class myResultSet implements ResultSet {
 
     @Override
     public Statement getStatement() throws SQLException {
-        return null;
+        if (isClosed()){
+            throw new SQLException("already closed");
+        }
+        return this.statement;
     }
 
     @Override
@@ -763,7 +949,7 @@ public class myResultSet implements ResultSet {
 
     @Override
     public boolean isClosed() throws SQLException {
-        return false;
+        return closed;
     }
 
     @Override
@@ -1013,6 +1199,7 @@ public class myResultSet implements ResultSet {
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
-                throw new java.lang.UnsupportedOperationException();
+        throw new java.lang.UnsupportedOperationException();
     }
+
 }
