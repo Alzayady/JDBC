@@ -27,7 +27,7 @@ public class myDriver implements Driver {
             path= (String)info.get("path");
 
         }
-        System.out.println(path);
+//        System.out.println(path);
         return myConnection.controls.getConnection(path);
     }
 
